@@ -4,7 +4,7 @@
 let selectedAmount = 0;
 let frequency = 'once';
 let publicChannel = 'online';
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = '/api';
 
 // ===== DOM Ready =====
 document.addEventListener('DOMContentLoaded', function () {
