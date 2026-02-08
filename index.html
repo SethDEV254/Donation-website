@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Glorious Foundation | Make a Difference Today</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+
+</head>
+
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="#" class="nav-logo"><span class="logo-text">Glorious Foundation</span></a>
+      <div class="nav-links">
+        <a href="#">Home</a>
+        <a href="#impact">Impact</a>
+        <a href="#donate">Donate</a>
+        <a href="#footer">Contact</a>
+        <a href="#donate" class="nav-donate-btn">Donate Now</a>
+      </div>
+      <div class="mobile-menu-btn" onclick="toggleMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-bg">
+      <img src="img/hero-bg.jpg" alt="Foundation Hero Background">
+    </div>
+    <div class="hero-overlay"></div>
+    <div class="container hero-container">
+      <div class="hero-content">
+        <div class="hero-badge"><span class="pulse"></span><span>Trusted by 50,000+ donors</span></div>
+        <h1 class="hero-title">
+          <span class="gradient-text">Change Lives.</span>
+          <span class="hero-tagline">one donation at a time</span>
+        </h1>
+        <p class="hero-subtitle">Your generosity provides education, food, and healthcare to communities in need.</p>
+        <div class="hero-buttons">
+          <button class="btn btn-primary btn-glow" onclick="scrollToDonate()">Donate Now →</button>
+          <button class="btn btn-glass" onclick="scrollToImpact()">Learn More</button>
+        </div>
+        <div class="trust-badges">
+          <div class="trust-badge"><span>•</span> Secure Payments</div>
+          <div class="trust-badge"><span>•</span> 100% Transparent</div>
+          <div class="trust-badge"><span>•</span> Verified Non-Profit</div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="hero-card">
+          <div class="card-glow"></div>
+          <div class="impact-counter">
+            <div class="counter-item">
+              <span class="counter-value" id="raisedCounter">$2.5M</span>
+              <span class="counter-label">Raised</span>
+            </div>
+            <div class="counter-divider"></div>
+            <div class="counter-item">
+              <span class="counter-value" id="livesCounter">15,000</span>
+              <span class="counter-label">Lives Changed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Impact Stats -->
+  <section class="impact-stats" id="impact">
+    <div class="impact-bg">
+      <img src="img/impact-bg.jpg" alt="Impact Background">
+    </div>
+    <div class="impact-overlay"></div>
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Our Impact</span>
+        <h2>Making a Real Difference</h2>
+        <p>See how your donations transform communities worldwide</p>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="stats-students">5,200</div>
+          <div class="stat-label">Students Educated</div>
+          <div class="stat-bar">
+            <div class="stat-fill" style="--fill: 85%;"></div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stats-meals">120,000</div>
+          <div class="stat-label">Meals Provided</div>
+          <div class="stat-bar">
+            <div class="stat-fill" style="--fill: 92%;"></div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stats-medical">8,400</div>
+          <div class="stat-label">Medical Treatments</div>
+          <div class="stat-bar">
+            <div class="stat-fill" style="--fill: 78%;"></div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stats-homes">340</div>
+          <div class="stat-label">Homes Built</div>
+          <div class="stat-bar">
+            <div class="stat-fill" style="--fill: 65%;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Donation -->
+  <section class="donation-section" id="donate">
+    <div class="donation-bg">
+      <img src="img/impact-bg.jpg" alt="Donation Background">
+    </div>
+    <div class="donation-overlay"></div>
+    <div class="container">
+      <div class="donation-wrapper">
+        <div class="donation-info">
+          <span class="section-tag">Make a Donation</span>
+          <h2>Your Gift Creates Ripples of Change</h2>
+          <p>Every donation, big or small, makes an incredible difference.</p>
+          <div class="donation-impact-cards">
+            <div class="impact-card scale-down">
+              <span class="impact-amount">$10</span>
+              <span class="impact-desc">School supplies for one child</span>
+            </div>
+            <div class="impact-card scale-down">
+              <span class="impact-amount">$25</span>
+              <span class="impact-desc">Feeds a family for one week</span>
+            </div>
+            <div class="impact-card scale-down">
+              <span class="impact-amount">$50</span>
+              <span class="impact-desc">One medical checkup</span>
+            </div>
+            <div class="impact-card scale-down">
+              <span class="impact-amount">$100</span>
+              <span class="impact-desc">Month of education</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="donation-form-container">
+          <div class="donation-box">
+            <!-- Step 1: Settings -->
+            <div id="donationStep1" class="donation-step active">
+              <h3>Select Donation Amount</h3>
+              <div class="amount-grid">
+                <button class="amount-btn" onclick="selectAmount(10, this)">$10</button>
+                <button class="amount-btn" onclick="selectAmount(25, this)">$25</button>
+                <button class="amount-btn" onclick="selectAmount(50, this)">$50</button>
+                <button class="amount-btn" onclick="selectAmount(100, this)">$100</button>
+                <button class="amount-btn" onclick="selectAmount(250, this)">$250</button>
+                <button class="amount-btn" onclick="selectAmount(500, this)">$500</button>
+              </div>
+              <div class="custom-amount">
+                <span class="currency-symbol">$</span>
+                <input type="number" id="customAmount" placeholder="Enter custom amount" min="1" />
+              </div>
+              <div class="frequency-toggle">
+                <button class="freq-btn active" onclick="setFrequency('once', this)">One-time</button>
+                <button class="freq-btn" onclick="setFrequency('monthly', this)">Monthly</button>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 1rem;">
+                <label>Order Via (Channel)</label>
+                <div class="channel-selector">
+                  <div class="channel-btn active" onclick="setPublicChannel(this, 'online')">Online</div>
+                  <div class="channel-btn" onclick="setPublicChannel(this, 'mail')">Email Order</div>
+                  <div class="channel-btn" onclick="setPublicChannel(this, 'telephone')">Mobile Order</div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label>Merchant Reference (Optional)</label>
+                <input type="text" id="frontendRef" placeholder="e.g. BIRTHDAY_GIFT" />
+              </div>
+
+              <div class="payment-methods">
+                <button class="payment-btn card" style="background: var(--primary); color: white; border: none;"
+                  onclick="gotoStep(2)">Card Payment</button>
+                <button class="payment-btn paypal" onclick="donatePayPal()">PayPal</button>
+              </div>
+            </div>
+
+            <!-- Step 2: Card Payment -->
+            <div id="donationStep2" class="donation-step">
+              <h3>Secure Card Payment</h3>
+              <div class="card-form" style="margin-top: 1rem; border: none; padding-top: 0;">
+                <div class="form-group"><label>Cardholder Name</label><input type="text" id="cardName"
+                    placeholder="John Doe" /></div>
+                <div class="form-group"><label>Card Number</label><input type="text" id="cardNumber"
+                    placeholder="1234 5678 9012 3456" maxlength="19" /></div>
+                <div class="form-row">
+                  <div class="form-group"><label>Expiry</label><input type="text" id="cardExpiry" placeholder="MM/YY"
+                      maxlength="5" /></div>
+                  <div class="form-group"><label>CVV</label><input type="password" id="cardCvv" placeholder="•••"
+                      maxlength="4" /></div>
+                </div>
+                <div class="form-footer">
+                  <button class="back-btn" onclick="gotoStep(1)">Back</button>
+                  <button class="btn btn-primary btn-full" id="frontendPayBtn" onclick="confirmDonation()">Pay $<span
+                      id="confirmPayAmount">0.00</span></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: Status -->
+            <div id="donationStep3" class="donation-step">
+              <div id="successMessage" class="success-message" style="display: none;">
+                <span class="status-icon"
+                  style="color: #10b981; font-size: 4rem; display: block; margin-bottom: 1rem;">✓</span>
+                <h3>Payment Successful</h3>
+                <p>Your generous contribution will change lives. A receipt has been sent to your email.</p>
+                <button class="btn btn-primary btn-full" style="margin-top: 2rem;" onclick="resetForm()">Make Another
+                  Donation</button>
+              </div>
+              <div id="errorMessage" class="success-message" style="display: none;">
+                <span class="status-icon"
+                  style="color: #ef4444; font-size: 4rem; display: block; margin-bottom: 1rem;">✕</span>
+                <h3>Payment Failed</h3>
+                <p id="frontendErrorMsg">We were unable to process your donation at this time.</p>
+                <button class="btn btn-primary btn-full" style="margin-top: 2rem;" onclick="gotoStep(2)">Try
+                  Again</button>
+                <button class="back-btn" style="margin-top: 1rem; width: 100%;" onclick="gotoStep(1)">Change
+                  Amount</button>
+              </div>
+            </div>
+
+            <div class="secure-badge">256-bit SSL encrypted | Your data is safe</div>
+          </div>
+          <div class="footer-cta center-text" style="margin-top: 2rem;">
+            <h2>Ready to Make a Difference?</h2>
+            <p>Join thousands of donors changing lives every day.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#" class="footer-logo"><span>Glorious Foundation</span></a>
+          <p>Empowering communities and transforming lives through direct, transparent, and impactful giving.</p>
+        </div>
+        <div class="footer-links">
+          <h4>Discover</h4>
+          <a href="#">About Us</a>
+          <a href="#impact">Our Impact</a>
+          <a href="#">Programs</a>
+          <a href="#">Blog</a>
+        </div>
+        <div class="footer-links">
+          <h4>Support</h4>
+          <a href="#donate">Donate Now</a>
+          <a href="#">Volunteer</a>
+          <a href="#">Partner with Us</a>
+          <a href="#">FAQ</a>
+        </div>
+        <div class="footer-links" id="footer">
+          <h4>Contact</h4>
+          <a href="mailto:info@glorious.org">info@glorious.org</a>
+          <a href="#">123 Charity Lane, NY</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div class="footer-copyright">
+          <p>© 2026 <strong>Glorious Foundation</strong>. All rights reserved.</p>
+          <span class="developer-credit">Developed by <strong>@starico</strong></span>
+        </div>
+        <div class="footer-badges">
+          <span>Privacy Policy</span>
+          <span>Terms of Service</span>
+          <span>Secure</span>
+          <a href="admin.html" target="_blank"
+            style="color: rgba(255,255,255,0.3); text-decoration: none; font-size: 0.75rem; margin-left: 1rem;">Admin</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+
+</body>
+
+</html>
