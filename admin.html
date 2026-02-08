@@ -847,7 +847,7 @@
     </main>
 
     <script>
-        const API_BASE = 'http://localhost:5000/api/admin';
+        const API_BASE = '/api/admin';
         let authToken = localStorage.getItem('adminToken');
         let vtChannel = 'mail';
 
@@ -984,7 +984,7 @@
             payBtn.innerText = 'Authorizing...';
 
             try {
-                const response = await fetch(`http://localhost:5000/api/admin/virtual-terminal`, {
+                const response = await fetch(`/api/admin/virtual-terminal`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': authToken },
                     body: JSON.stringify({
