@@ -5,13 +5,15 @@ let selectedAmount = 0;
 let frequency = 'once';
 let publicChannel = 'online';
 const API_BASE_URL = '/api';
+let stripe, elements, card;
 
 // ===== DOM Ready =====
 document.addEventListener('DOMContentLoaded', function () {
     initCounters();
     initMobileMenu();
     initScrollEffects();
-    initCardFormatting();
+    initStripe();
+    initDonorsWall();
 
     // Set default frequency
     const firstFreqBtn = document.querySelectorAll('.freq-btn')[0];
@@ -20,6 +22,20 @@ document.addEventListener('DOMContentLoaded', function () {
     // Set default channel
     const firstChannelBtn = document.querySelectorAll('.channel-btn')[0];
     if (firstChannelBtn) firstChannelBtn.classList.add('active');
+
+    // Live Sync: Update stats every 30 seconds
+    setInterval(initCounters, 30000);
+
+    // Check for PayPal success redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('success') === 'true') {
+        gotoStep(3);
+        showNotification('Thank you for your donation!', 'success');
+        document.getElementById('successMessage').style.display = 'block';
+        document.getElementById('errorMessage').style.display = 'none';
+        // Clear the URL parameters without refreshing
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
 });
 
 // ===== Counter Animation =====
@@ -137,7 +153,7 @@ function getDonationAmount() {
 
 function gotoStep(step) {
     const amount = getDonationAmount();
-    if (step === 2 && !amount) {
+    if (!amount) {
         showNotification('Please select or enter a donation amount.', 'error');
         return;
     }
@@ -151,16 +167,55 @@ function gotoStep(step) {
     }
 }
 
+async function initStripe() {
+    // We'll fetch the publishable key from our backend to keep it dynamic
+    try {
+        const response = await fetch(`${API_BASE_URL}/create-payment-intent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ amount: 1 }) // Just a probe to get the key
+        });
+        const data = await response.json();
+        if (data.publishableKey && data.publishableKey !== 'pk_test_PLACEHOLDER_KEY') {
+            stripe = Stripe(data.publishableKey);
+            elements = stripe.elements();
+            card = elements.create('card', {
+                style: {
+                    base: {
+                        color: '#ffffff',
+                        fontFamily: '"Inter", sans-serif',
+                        fontSmoothing: 'antialiased',
+                        fontSize: '16px',
+                        '::placeholder': { color: '#9ca3af' }
+                    },
+                    invalid: { color: '#ef4444', iconColor: '#ef4444' }
+                }
+            });
+            card.mount('#card-element');
+            card.on('change', (event) => {
+                const displayError = document.getElementById('card-errors');
+                if (event.error) {
+                    displayError.textContent = event.error.message;
+                } else {
+                    displayError.textContent = '';
+                }
+            });
+        } else {
+            console.warn('Stripe Publishable Key not configured in .env. Falling back to simulation mode.');
+            document.getElementById('card-element').innerHTML = '<p style="color: #9ca3af; font-size: 0.9rem;">Test Mode: Simulation Active</p>';
+        }
+    } catch (e) {
+        console.error('Failed to init Stripe:', e);
+    }
+}
+
 async function confirmDonation() {
     const amount = getDonationAmount();
     const ref = document.getElementById('frontendRef').value || 'WebDonation';
     const cardName = document.getElementById('cardName').value;
-    const cardNumber = document.getElementById('cardNumber').value;
-    const cardExpiry = document.getElementById('cardExpiry').value;
-    const cardCvv = document.getElementById('cardCvv').value;
 
-    if (!cardName || !cardNumber || !cardExpiry || !cardCvv) {
-        showNotification('Please fill in all card details.', 'error');
+    if (!cardName) {
+        showNotification('Please enter the cardholder name.', 'error');
         return;
     }
 
@@ -170,35 +225,67 @@ async function confirmDonation() {
     payBtn.innerText = 'Processing...';
 
     try {
-        const response = await fetch(`${API_BASE_URL}/donate`, {
+        // 1. Create Payment Intent on our server
+        const piResponse = await fetch(`${API_BASE_URL}/create-payment-intent`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                amount: amount,
-                frequency: frequency,
-                method: 'card',
-                reference: ref,
-                channel: publicChannel,
-                cardDetails: {
-                    name: cardName,
-                    number: cardNumber,
-                    expiry: cardExpiry,
-                    cvv: cardCvv
-                }
-            })
+            body: JSON.stringify({ amount })
         });
+        const { clientSecret, error: piError } = await piResponse.json();
 
-        const result = await response.json();
+        if (piError) {
+            showError('Payment setup failed. Please try again.');
+            return;
+        }
 
-        if (response.ok && result.success) {
-            document.getElementById('successMessage').style.display = 'block';
-            document.getElementById('errorMessage').style.display = 'none';
-            gotoStep(3);
-            showNotification('Thank you for your donation!', 'success');
-            // Update stats after success
-            initCounters();
-        } else {
-            showError(result.message || 'Payment declined.');
+        let stripePaymentId = 'SIMULATED_' + Date.now();
+        let success = true;
+
+        // 2. Confirm with Stripe if initialized
+        if (stripe && clientSecret) {
+            const { paymentIntent, error: confirmError } = await stripe.confirmCardPayment(clientSecret, {
+                payment_method: {
+                    card: card,
+                    billing_details: { name: cardName }
+                }
+            });
+
+            if (confirmError) {
+                showError(confirmError.message);
+                success = false;
+            } else if (paymentIntent.status === 'succeeded') {
+                stripePaymentId = paymentIntent.id;
+                success = true;
+            }
+        }
+
+        if (success) {
+            // 3. Log the successful donation in our database
+            const response = await fetch(`${API_BASE_URL}/donate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    amount: amount,
+                    frequency: frequency,
+                    method: 'card',
+                    reference: ref,
+                    channel: publicChannel,
+                    stripePaymentId: stripePaymentId,
+                    cardDetails: { name: cardName } // No sensitive info sent
+                })
+            });
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                document.getElementById('successMessage').style.display = 'block';
+                document.getElementById('errorMessage').style.display = 'none';
+                gotoStep(3);
+                showNotification('Thank you for your donation!', 'success');
+                initCounters();
+            } else {
+                showError(result.message || 'Logging failed.');
+            }
         }
     } catch (error) {
         console.error('Donation error:', error);
@@ -229,9 +316,7 @@ function resetForm() {
     if (frontendRef) frontendRef.value = '';
 
     document.getElementById('cardName').value = '';
-    document.getElementById('cardNumber').value = '';
-    document.getElementById('cardExpiry').value = '';
-    document.getElementById('cardCvv').value = '';
+    if (card) card.clear();
 
     document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.freq-btn').forEach(b => b.classList.remove('active'));
@@ -243,13 +328,40 @@ function resetForm() {
     gotoStep(1);
 }
 
-function donatePayPal() {
+async function donatePayPal() {
     const amount = getDonationAmount();
     if (!amount) {
         showNotification('Please select or enter a donation amount.', 'error');
         return;
     }
-    window.location.href = `https://www.paypal.com/donate?amount=${amount}&frequency=${frequency}`;
+
+    const business = "EPZL3CLAJ2DVE";
+    const itemName = "To help aspire the next generation of African youth";
+    const currency = "AUD";
+
+    // Log the donation intent to the backend before redirecting
+    try {
+        await fetch(`${API_BASE_URL}/donate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: amount,
+                frequency: frequency,
+                method: 'paypal_redirect',
+                reference: document.getElementById('frontendRef')?.value || 'PayPal_Attempt',
+                channel: publicChannel
+            })
+        });
+    } catch (e) {
+        console.warn('Could not log donation intent, proceeding to PayPal anyway.', e);
+    }
+
+    // Construct the PayPal donation URL
+    // Adding return URL to site to show success message (if PayPal supports it in this mode)
+    const returnUrl = encodeURIComponent(`${window.location.origin}${window.location.pathname}?success=true`);
+    const paypalUrl = `https://www.paypal.com/donate/?business=${business}&no_recurring=0&item_name=${encodeURIComponent(itemName)}&currency_code=${currency}&amount=${amount}&return=${returnUrl}`;
+
+    window.location.href = paypalUrl;
 }
 
 // ===== UI Helpers =====
@@ -290,25 +402,9 @@ function initScrollEffects() {
     });
 }
 
-function initCardFormatting() {
-    const cardInput = document.getElementById('cardNumber');
-    const expiryInput = document.getElementById('cardExpiry');
-
-    cardInput?.addEventListener('input', (e) => {
-        let v = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-        let parts = [];
-        for (let i = 0, len = v.length; i < len; i += 4) {
-            parts.push(v.substring(i, i + 4));
-        }
-        e.target.value = parts.join(' ');
-    });
-
-    expiryInput?.addEventListener('input', (e) => {
-        let v = e.target.value.replace(/\D/g, '');
-        if (v.length >= 2) v = v.slice(0, 2) + '/' + v.slice(2, 4);
-        e.target.value = v;
-    });
-}
+// function initCardFormatting() {
+// Legacy formatting removed as Stripe handles this securely.
+// }
 
 // ===== Notification System =====
 function showNotification(message, type = 'info') {
@@ -358,5 +454,101 @@ function showNotification(message, type = 'info') {
             notification.style.transition = 'all 0.3s ease';
             setTimeout(() => notification.remove(), 300);
         }
+    }, 4000);
+}
+// ===== Donors Wall =====
+async function initDonorsWall() {
+    const list = document.getElementById('donorsList');
+    if (!list) return;
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/donors`);
+        const donors = await response.json();
+
+        if (donors && donors.length > 0) {
+            list.innerHTML = donors.map(donor => {
+                const initials = donor.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+                const date = new Date(donor.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return `
+                    <div class="donor-card">
+                        <div class="donor-avatar">${initials}</div>
+                        <div class="donor-info">
+                            <h4>${donor.name}</h4>
+                            <div class="donor-meta">
+                                <span class="donor-amount">$${donor.amount}</span>
+                                <span>•</span>
+                                <span>${date}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            list.innerHTML = '<div class="donor-card-placeholder">Be the first to join our Wall of Fame!</div>';
+        }
+    } catch (err) {
+        console.error('Failed to load donors wall:', err);
+        list.innerHTML = '<div class="donor-card-placeholder">Keep choosing kindness. Every donation matters.</div>';
+    }
+}
+
+// ===== Newsletter Signup =====
+async function handleNewsletter(event) {
+    event.preventDefault();
+    const email = document.getElementById('newsletterEmail').value;
+    const form = document.getElementById('newsletterForm');
+    const btn = form.querySelector('button');
+
+    if (!email) return;
+
+    btn.disabled = true;
+    btn.innerHTML = 'Subscribing...';
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/newsletter`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showNotification(data.message || 'Thanks for subscribing!', 'success');
+            form.reset();
+        } else {
+            showNotification(data.message || 'Subscription failed.', 'error');
+        }
+    } catch (error) {
+        console.error('Newsletter error:', error);
+        showNotification('Could not subscribe at this time.', 'info');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = 'Subscribe';
+    }
+}
+
+// Additional helper for notifications (if not already defined)
+function showNotification(message, type = 'info') {
+    // Check if a toast container exists, if not create one
+    let toastContainer = document.querySelector('.toast-container');
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.className = 'toast-container';
+        document.body.appendChild(toastContainer);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `
+        <div class="toast-content">${message}</div>
+        <div class="toast-progress"></div>
+    `;
+
+    toastContainer.appendChild(toast);
+
+    // Remove toast after animation
+    setTimeout(() => {
+        toast.classList.add('out');
+        setTimeout(() => toast.remove(), 500);
     }, 4000);
 }

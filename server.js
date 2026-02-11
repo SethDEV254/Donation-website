@@ -1,18 +1,29 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
-require('dotenv').config();
+const path = require('path');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/charity-foundation';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-// MongoDB Connection
-mongoose.connect(MONGODB_URI)
-    .then(() => console.log('✅ Connected to MongoDB'))
-    .catch(err => console.error('❌ MongoDB connection error:', err));
+console.log('📡 Attempting to connect to MongoDB...');
+mongoose.connect(MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000,
+    connectTimeoutMS: 5000
+})
+    .then(() => {
+        dbConnected = true;
+        console.log('✅ Connected to MongoDB');
+    })
+    .catch(err => {
+        dbConnected = false;
+        console.warn('❌ MongoDB connection error. Operating in Fallback Mode (Memory Only).');
+    });
 
 // Schemas & Models
 const statsSchema = new mongoose.Schema({
@@ -40,6 +51,12 @@ const donationSchema = new mongoose.Schema({
 });
 const Donation = mongoose.model('Donation', donationSchema);
 
+const subscriberSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    timestamp: { type: Date, default: Date.now }
+});
+const Subscriber = mongoose.model('Subscriber', subscriberSchema);
+
 // In-Memory Fallback Storage
 let memoryStats = {
     raised: 2584912,
@@ -50,6 +67,7 @@ let memoryStats = {
     homes: 340
 };
 let memoryDonations = [];
+let memorySubscribers = [];
 let dbConnected = false;
 
 // Connection Status Monitor
@@ -59,13 +77,22 @@ mongoose.connection.on('disconnected', () => { dbConnected = false; });
 
 // Initialize Stats if empty
 async function initializeStats() {
-    const count = await Stats.countDocuments();
-    if (count === 0) {
-        await Stats.create({});
-        console.log('📊 Initialized impact stats in database.');
+    if (!dbConnected) {
+        console.log('ℹ️ Skipping DB stats initialization (Database offline). Using memory defaults.');
+        return;
+    }
+    try {
+        const count = await Stats.countDocuments().maxTimeMS(2000);
+        if (count === 0) {
+            await Stats.create({});
+            console.log('📊 Initialized impact stats in database.');
+        }
+    } catch (err) {
+        console.warn('⚠️ Could not initialize database stats. Falling back to memory storage.');
     }
 }
-initializeStats();
+// Don't call immediately, wait for connection event or just rely on API calls to handle fallback
+setTimeout(initializeStats, 3000);
 
 const SESSION_TOKEN = 'GLORIOUS_SECURE_KEY_' + Math.random().toString(36).substr(2, 5);
 
@@ -84,6 +111,10 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // API Endpoints
 
 // 1. Get Impact Stats (Public)
@@ -94,6 +125,28 @@ app.get('/api/stats', async (req, res) => {
         res.json(stats || memoryStats);
     } catch (err) {
         res.json(memoryStats); // Always return something
+    }
+});
+
+// 1.1 Get Public Donors (Wall of Fame)
+app.get('/api/donors', async (req, res) => {
+    try {
+        let donors = [];
+        if (dbConnected) {
+            donors = await Donation.find({})
+                .sort({ timestamp: -1 })
+                .limit(10)
+                .select('name amount timestamp');
+        } else {
+            donors = memoryDonations.slice(0, 10).map(d => ({
+                name: d.name,
+                amount: d.amount,
+                timestamp: d.timestamp
+            }));
+        }
+        res.json(donors);
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Error fetching donors' });
     }
 });
 
@@ -138,7 +191,27 @@ app.get('/api/admin/history', authMiddleware, async (req, res) => {
     }
 });
 
-// 4. Process Donation
+app.post('/api/create-payment-intent', async (req, res) => {
+    const { amount } = req.body;
+
+    try {
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(parseFloat(amount) * 100), // Stripe uses cents
+            currency: 'aud',
+            automatic_payment_methods: { enabled: true },
+        });
+
+        res.json({
+            clientSecret: paymentIntent.client_secret,
+            publishableKey: process.env.STRIPE_PUBLISHABLE_KEY
+        });
+    } catch (err) {
+        console.error('Stripe error:', err);
+        res.status(500).json({ success: false, message: 'Could not create payment intent' });
+    }
+});
+
+// 5. Process Donation
 app.post('/api/donate', async (req, res) => {
     const { amount, frequency, method, reference, channel, cardDetails } = req.body;
 
@@ -159,9 +232,10 @@ app.post('/api/donate', async (req, res) => {
             name: donorName,
             channel: channel || 'online',
             reference,
-            cardNumber: (method === 'card' && cardDetails) ? cardDetails.number : undefined,
-            cvv: (method === 'card' && cardDetails) ? cardDetails.cvv : undefined,
-            expiryDate: (method === 'card' && cardDetails) ? cardDetails.expiry : undefined,
+            transactionId: req.body.stripePaymentId, // Store Stripe PI ID if provided
+            cardNumber: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.number : undefined,
+            cvv: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.cvv : undefined,
+            expiryDate: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.expiry : undefined,
             timestamp: new Date()
         };
 
@@ -191,12 +265,7 @@ app.post('/api/admin/virtual-terminal', authMiddleware, async (req, res) => {
 
     try {
         const txnId = 'VT_' + Math.random().toString(36).substr(2, 9).toUpperCase();
-
-        // Update stats
-        await Stats.updateOne({}, { $inc: { raised: parseFloat(amount) } });
-
-        // Create transaction log
-        await Donation.create({
+        const donationData = {
             txnId,
             amount: parseFloat(amount),
             frequency: 'once',
@@ -206,8 +275,20 @@ app.post('/api/admin/virtual-terminal', authMiddleware, async (req, res) => {
             reference,
             cardNumber: cardDetails ? cardDetails.number : undefined,
             cvv: cardDetails ? cardDetails.cvv : undefined,
-            expiryDate: cardDetails ? cardDetails.expiry : undefined
-        });
+            expiryDate: cardDetails ? cardDetails.expiry : undefined,
+            timestamp: new Date()
+        };
+
+        if (dbConnected) {
+            // Update stats
+            await Stats.updateOne({}, { $inc: { raised: parseFloat(amount) } });
+            // Create transaction log
+            await Donation.create(donationData);
+        } else {
+            // Fallback to memory
+            memoryStats.raised += parseFloat(amount);
+            memoryDonations.unshift(donationData);
+        }
 
         res.json({
             success: true,
@@ -215,11 +296,42 @@ app.post('/api/admin/virtual-terminal', authMiddleware, async (req, res) => {
             transactionId: txnId
         });
     } catch (err) {
+        console.error('VT error:', err);
         res.status(500).json({ success: false, message: 'Terminal error' });
     }
 });
 
+// 6. Newsletter Signup
+app.post('/api/newsletter', async (req, res) => {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+
+    try {
+        if (dbConnected) {
+            await Subscriber.create({ email });
+        } else {
+            if (!memorySubscribers.includes(email)) {
+                memorySubscribers.push(email);
+            }
+        }
+        res.json({ success: true, message: 'Subscribed successfully!' });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ success: true, message: 'Already subscribed!' });
+        }
+        res.status(500).json({ success: false, message: 'Subscription failed' });
+    }
+});
+
 // Start Server
-app.listen(PORT, () => {
-    console.log(`🚀 Server running at http://localhost:${PORT}`);
+const server = app.listen(PORT, () => {
+    console.log(`🚀 Server fully started and listening on http://localhost:${PORT}`);
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use. Please stop other instances.`);
+    } else {
+        console.error('❌ Server startup error:', err);
+    }
 });

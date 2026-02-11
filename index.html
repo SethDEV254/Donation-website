@@ -9,7 +9,7 @@
     href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-
+  <script src="https://js.stripe.com/v3/"></script>
 </head>
 
 <body>
@@ -120,6 +120,21 @@
     </div>
   </section>
 
+  <!-- Wall of Fame -->
+  <section class="donors-wall" id="donors">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Wall of Fame</span>
+        <h2>Our Generous Change-Makers</h2>
+        <p>A tribute to those who believed in our mission and made it their own.</p>
+      </div>
+      <div id="donorsList" class="donors-grid">
+        <!-- Donors will be dynamically populated here -->
+        <div class="donor-card-placeholder">Loading our heroes...</div>
+      </div>
+    </div>
+  </section>
+
   <!-- Donation -->
   <section class="donation-section" id="donate">
     <div class="donation-bg">
@@ -190,8 +205,8 @@
 
               <div class="payment-methods">
                 <button class="payment-btn card" style="background: var(--primary); color: white; border: none;"
-                  onclick="gotoStep(2)">Card Payment</button>
-                <button class="payment-btn paypal" onclick="donatePayPal()">PayPal</button>
+                  onclick="gotoStep(2)">Card / Credit Payment</button>
+                <button class="payment-btn paypal" onclick="donatePayPal()">PayPal Checkout</button>
               </div>
             </div>
 
@@ -201,13 +216,13 @@
               <div class="card-form" style="margin-top: 1rem; border: none; padding-top: 0;">
                 <div class="form-group"><label>Cardholder Name</label><input type="text" id="cardName"
                     placeholder="John Doe" /></div>
-                <div class="form-group"><label>Card Number</label><input type="text" id="cardNumber"
-                    placeholder="1234 5678 9012 3456" maxlength="19" /></div>
-                <div class="form-row">
-                  <div class="form-group"><label>Expiry</label><input type="text" id="cardExpiry" placeholder="MM/YY"
-                      maxlength="5" /></div>
-                  <div class="form-group"><label>CVV</label><input type="password" id="cardCvv" placeholder="•••"
-                      maxlength="4" /></div>
+                <div class="form-group">
+                  <label>Card Details</label>
+                  <div id="card-element" class="stripe-element-container">
+                    <!-- Stripe Element will be inserted here -->
+                  </div>
+                  <div id="card-errors" role="alert" style="color: #ef4444; font-size: 0.9rem; margin-top: 0.5rem;">
+                  </div>
                 </div>
                 <div class="form-footer">
                   <button class="back-btn" onclick="gotoStep(1)">Back</button>
@@ -250,7 +265,21 @@
     </div>
   </section>
 
-
+  <!-- Newsletter Signup -->
+  <section class="newsletter-section">
+    <div class="container">
+      <div class="newsletter-card">
+        <div class="newsletter-content">
+          <h3>Stay Updated</h3>
+          <p>Join our community to receive impactful stories and project updates directly in your inbox.</p>
+        </div>
+        <form id="newsletterForm" class="newsletter-form" onsubmit="handleNewsletter(event)">
+          <input type="email" id="newsletterEmail" placeholder="your@email.com" required />
+          <button type="submit" class="btn btn-primary">Subscribe</button>
+        </form>
+      </div>
+    </div>
+  </section>
 
   <!-- Footer -->
   <footer class="footer">
