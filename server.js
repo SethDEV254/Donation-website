@@ -199,6 +199,11 @@ app.post('/api/create-payment-intent', async (req, res) => {
             amount: Math.round(parseFloat(amount) * 100), // Stripe uses cents
             currency: 'aud',
             automatic_payment_methods: { enabled: true },
+            payment_method_options: {
+                card: {
+                    request_three_d_secure: 'never',
+                },
+            },
         });
 
         res.json({
@@ -222,6 +227,54 @@ app.post('/api/donate', async (req, res) => {
             donorName = `${donorName} [${channel.charAt(0).toUpperCase() + channel.slice(1)}]`;
         }
 
+        let stripePaymentId = undefined;
+
+        // If it's a card payment, process it via Stripe
+        if (method === 'card' && cardDetails && cardDetails.number) {
+            console.log('💳 Processing server-side 2D card payment...');
+
+            // Parse expiry date (MM/YY)
+            const [expMonth, expYear] = cardDetails.expiry.split('/').map(v => v.trim());
+            const fullYear = expYear.length === 2 ? `20${expYear}` : expYear;
+
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: Math.round(parseFloat(amount) * 100),
+                    currency: 'aud',
+                    payment_method_data: {
+                        type: 'card',
+                        card: {
+                            number: cardDetails.number,
+                            exp_month: parseInt(expMonth),
+                            exp_year: parseInt(fullYear),
+                            cvc: cardDetails.cvv
+                        },
+                        billing_details: { name: cardDetails.name }
+                    },
+                    confirm: true,
+                    payment_method_options: {
+                        card: {
+                            request_three_d_secure: 'never'
+                        }
+                    },
+                    // This flag is important for 2D flow
+                    automatic_payment_methods: {
+                        enabled: true,
+                        allow_redirects: 'never'
+                    }
+                });
+
+                if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'requires_capture') {
+                    stripePaymentId = paymentIntent.id;
+                } else {
+                    return res.status(400).json({ success: false, message: `Payment status: ${paymentIntent.status}` });
+                }
+            } catch (stripeErr) {
+                console.error('Stripe processing error:', stripeErr.message);
+                return res.status(400).json({ success: false, message: stripeErr.message });
+            }
+        }
+
         const txnId = 'TXN_' + Math.random().toString(36).substr(2, 9).toUpperCase();
 
         const donationData = {
@@ -232,10 +285,9 @@ app.post('/api/donate', async (req, res) => {
             name: donorName,
             channel: channel || 'online',
             reference,
-            transactionId: req.body.stripePaymentId, // Store Stripe PI ID if provided
-            cardNumber: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.number : undefined,
-            cvv: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.cvv : undefined,
-            expiryDate: (method === 'card' && cardDetails && !req.body.stripePaymentId) ? cardDetails.expiry : undefined,
+            transactionId: stripePaymentId,
+            // SECURITY: Only store masked card number or omit entirely
+            cardNumber: (method === 'card' && cardDetails) ? `**** **** **** ${cardDetails.number.slice(-4)}` : undefined,
             timestamp: new Date()
         };
 
@@ -264,6 +316,51 @@ app.post('/api/admin/virtual-terminal', authMiddleware, async (req, res) => {
     const { channel, amount, reference, cardDetails } = req.body;
 
     try {
+        let stripePaymentId = undefined;
+
+        // Process actual charge if card details are present
+        if (cardDetails && cardDetails.number) {
+            console.log('💳 Processing Virtual Terminal 2D payment...');
+
+            // Parse expiry (MM/YY)
+            const [expMonth, expYear] = cardDetails.expiry.split('/').map(v => v.trim());
+            const fullYear = expYear.length === 2 ? `20${expYear}` : expYear;
+
+            try {
+                const paymentIntent = await stripe.paymentIntents.create({
+                    amount: Math.round(parseFloat(amount) * 100),
+                    currency: 'aud',
+                    payment_method_data: {
+                        type: 'card',
+                        card: {
+                            number: cardDetails.number,
+                            exp_month: parseInt(expMonth),
+                            exp_year: parseInt(fullYear),
+                            cvc: cardDetails.cvv
+                        }
+                    },
+                    confirm: true,
+                    payment_method_options: {
+                        card: { request_three_d_secure: 'never' }
+                    },
+                    automatic_payment_methods: {
+                        enabled: true,
+                        allow_redirects: 'never'
+                    },
+                    description: `VT Order: ${reference || 'Manual'}`
+                });
+
+                if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'requires_capture') {
+                    stripePaymentId = paymentIntent.id;
+                } else {
+                    return res.status(400).json({ success: false, message: `Status: ${paymentIntent.status}` });
+                }
+            } catch (stripeErr) {
+                console.error('VT Stripe Error:', stripeErr.message);
+                return res.status(400).json({ success: false, message: stripeErr.message });
+            }
+        }
+
         const txnId = 'VT_' + Math.random().toString(36).substr(2, 9).toUpperCase();
         const donationData = {
             txnId,
@@ -273,19 +370,15 @@ app.post('/api/admin/virtual-terminal', authMiddleware, async (req, res) => {
             name: `VT: ${reference || 'Manual Entry'}`,
             channel,
             reference,
-            cardNumber: cardDetails ? cardDetails.number : undefined,
-            cvv: cardDetails ? cardDetails.cvv : undefined,
-            expiryDate: cardDetails ? cardDetails.expiry : undefined,
+            transactionId: stripePaymentId,
+            cardNumber: cardDetails ? `**** **** **** ${cardDetails.number.slice(-4)}` : undefined,
             timestamp: new Date()
         };
 
         if (dbConnected) {
-            // Update stats
             await Stats.updateOne({}, { $inc: { raised: parseFloat(amount) } });
-            // Create transaction log
             await Donation.create(donationData);
         } else {
-            // Fallback to memory
             memoryStats.raised += parseFloat(amount);
             memoryDonations.unshift(donationData);
         }

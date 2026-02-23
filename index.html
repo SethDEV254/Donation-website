@@ -217,12 +217,29 @@
                 <div class="form-group"><label>Cardholder Name</label><input type="text" id="cardName"
                     placeholder="John Doe" /></div>
                 <div class="form-group">
-                  <label>Card Details</label>
-                  <div id="card-element" class="stripe-element-container">
-                    <!-- Stripe Element will be inserted here -->
+                  <label>Card Number</label>
+                  <div class="stripe-element-container">
+                    <input type="text" id="manualCardNumber" placeholder="xxxx xxxx xxxx xxxx" maxlength="19"
+                      style="background: transparent; border: none; color: white; width: 100%; outline: none;" />
                   </div>
-                  <div id="card-errors" role="alert" style="color: #ef4444; font-size: 0.9rem; margin-top: 0.5rem;">
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Expiry Date</label>
+                    <div class="stripe-element-container">
+                      <input type="text" id="manualExpiry" placeholder="MM/YY" maxlength="5"
+                        style="background: transparent; border: none; color: white; width: 100%; outline: none;" />
+                    </div>
                   </div>
+                  <div class="form-group">
+                    <label>CVC / CVV</label>
+                    <div class="stripe-element-container">
+                      <input type="password" id="manualCvv" placeholder="•••" maxlength="4"
+                        style="background: transparent; border: none; color: white; width: 100%; outline: none;" />
+                    </div>
+                  </div>
+                </div>
+                <div id="card-errors" role="alert" style="color: #ef4444; font-size: 0.9rem; margin-top: 0.5rem;">
                 </div>
                 <div class="form-footer">
                   <button class="back-btn" onclick="gotoStep(1)">Back</button>

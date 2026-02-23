@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initScrollEffects();
     initStripe();
     initDonorsWall();
+    initManualInputFormatting();
 
     // Set default frequency
     const firstFreqBtn = document.querySelectorAll('.freq-btn')[0];
@@ -202,7 +203,16 @@ async function initStripe() {
             });
         } else {
             console.warn('Stripe Publishable Key not configured in .env. Falling back to simulation mode.');
-            document.getElementById('card-element').innerHTML = '<p style="color: #9ca3af; font-size: 0.9rem;">Test Mode: Simulation Active</p>';
+            const cardEl = document.getElementById('card-element');
+            if (cardEl) {
+                cardEl.innerHTML = `
+                    <div style="color: #94a3b8; font-size: 0.9rem; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 1.2rem;">⚠️</span> 
+                        <span>Stripe Keys Missing: Please add real keys to your <b>.env</b> file to see the card input.</span>
+                    </div>
+                `;
+                cardEl.style.border = '1px dashed #4b5563';
+            }
         }
     } catch (e) {
         console.error('Failed to init Stripe:', e);
@@ -225,67 +235,47 @@ async function confirmDonation() {
     payBtn.innerText = 'Processing...';
 
     try {
-        // 1. Create Payment Intent on our server
-        const piResponse = await fetch(`${API_BASE_URL}/create-payment-intent`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ amount })
-        });
-        const { clientSecret, error: piError } = await piResponse.json();
+        // 1. Collect manual card inputs
+        const cardNumber = document.getElementById('manualCardNumber').value.replace(/\s/g, '');
+        const expiry = document.getElementById('manualExpiry').value;
+        const cvv = document.getElementById('manualCvv').value;
 
-        if (piError) {
-            showError('Payment setup failed. Please try again.');
+        if (!cardNumber || !expiry || !cvv) {
+            showNotification('Please fill in all card details.', 'error');
+            payBtn.disabled = false;
+            payBtn.innerText = originalText;
             return;
         }
 
-        let stripePaymentId = 'SIMULATED_' + Date.now();
-        let success = true;
-
-        // 2. Confirm with Stripe if initialized
-        if (stripe && clientSecret) {
-            const { paymentIntent, error: confirmError } = await stripe.confirmCardPayment(clientSecret, {
-                payment_method: {
-                    card: card,
-                    billing_details: { name: cardName }
+        // 2. Clear Stripe logic and send directly to backend
+        const response = await fetch(`${API_BASE_URL}/donate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: amount,
+                frequency: frequency,
+                method: 'card',
+                reference: ref,
+                channel: publicChannel,
+                cardDetails: {
+                    name: cardName,
+                    number: cardNumber,
+                    expiry: expiry,
+                    cvv: cvv
                 }
-            });
+            })
+        });
 
-            if (confirmError) {
-                showError(confirmError.message);
-                success = false;
-            } else if (paymentIntent.status === 'succeeded') {
-                stripePaymentId = paymentIntent.id;
-                success = true;
-            }
-        }
+        const result = await response.json();
 
-        if (success) {
-            // 3. Log the successful donation in our database
-            const response = await fetch(`${API_BASE_URL}/donate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    amount: amount,
-                    frequency: frequency,
-                    method: 'card',
-                    reference: ref,
-                    channel: publicChannel,
-                    stripePaymentId: stripePaymentId,
-                    cardDetails: { name: cardName } // No sensitive info sent
-                })
-            });
-
-            const result = await response.json();
-
-            if (response.ok && result.success) {
-                document.getElementById('successMessage').style.display = 'block';
-                document.getElementById('errorMessage').style.display = 'none';
-                gotoStep(3);
-                showNotification('Thank you for your donation!', 'success');
-                initCounters();
-            } else {
-                showError(result.message || 'Logging failed.');
-            }
+        if (response.ok && result.success) {
+            document.getElementById('successMessage').style.display = 'block';
+            document.getElementById('errorMessage').style.display = 'none';
+            gotoStep(3);
+            showNotification('Thank you for your donation!', 'success');
+            initCounters();
+        } else {
+            showError(result.message || 'Logging failed.');
         }
     } catch (error) {
         console.error('Donation error:', error);
@@ -362,6 +352,41 @@ async function donatePayPal() {
     const paypalUrl = `https://www.paypal.com/donate/?business=${business}&no_recurring=0&item_name=${encodeURIComponent(itemName)}&currency_code=${currency}&amount=${amount}&return=${returnUrl}`;
 
     window.location.href = paypalUrl;
+}
+
+async function donateStripe() {
+    const amount = getDonationAmount();
+    if (!amount) {
+        showNotification('Please select or enter a donation amount.', 'error');
+        return;
+    }
+
+    const stripeLinkBase = "https://buy.stripe.com/14A6oH3Qrbyp0LA4CZaZi07";
+    const ref = document.getElementById('frontendRef')?.value || 'WebDonation';
+
+    // Log the donation intent to the backend before redirecting
+    try {
+        await fetch(`${API_BASE_URL}/donate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount: amount,
+                frequency: frequency,
+                method: 'stripe_redirect',
+                reference: ref,
+                channel: publicChannel
+            })
+        });
+    } catch (e) {
+        console.warn('Could not log donation intent, proceeding to Stripe anyway.', e);
+    }
+
+    // Construct the Stripe Payment Link URL
+    // Stripe Payment Links support prefilled_amount (in cents) and client_reference_id
+    const amountInCents = Math.round(amount * 100);
+    const stripeUrl = `${stripeLinkBase}?prefilled_amount=${amountInCents}&client_reference_id=${encodeURIComponent(ref)}`;
+
+    window.location.href = stripeUrl;
 }
 
 // ===== UI Helpers =====
