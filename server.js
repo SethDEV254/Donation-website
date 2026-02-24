@@ -4,9 +4,48 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const mongoose = require('mongoose');
 const path = require('path');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
+
+// 1. Security Headers (Helmet)
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+            "script-src": ["'self'", "'unsafe-inline'", "https://js.stripe.com"],
+            "frame-src": ["'self'", "https://js.stripe.com"],
+            "connect-src": ["'self'", "https://api.stripe.com"]
+        }
+    }
+}));
+
+// 2. Strict CORS
+const allowedOrigins = [
+    'http://localhost:5000',
+    'http://localhost:3000',
+    'https://staricos-potfolio.vercel.app', // Update with actual Vercel domain if known
+    /\.vercel\.app$/ // Allow all Vercel subdomains
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.some(pattern =>
+            typeof pattern === 'string' ? pattern === origin : pattern.test(origin)
+        )) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(bodyParser.json());
+
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/charity-foundation';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -151,7 +190,13 @@ app.get('/api/donors', async (req, res) => {
 });
 
 // 2. Admin Login
-app.post('/api/admin/login', (req, res) => {
+const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // Limit each IP to 5 login requests per window
+    message: { success: false, message: 'Too many login attempts, please try again later.' }
+});
+
+app.post('/api/admin/login', loginLimiter, (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
         res.json({ success: true, token: SESSION_TOKEN });
@@ -217,7 +262,13 @@ app.post('/api/create-payment-intent', async (req, res) => {
 });
 
 // 5. Process Donation
-app.post('/api/donate', async (req, res) => {
+const donateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 10, // Limit each IP to 10 donations per hour
+    message: { success: false, message: 'Donation limit reached for this hour. Thank you for your generosity!' }
+});
+
+app.post('/api/donate', donateLimiter, async (req, res) => {
     const { amount, frequency, method, reference, channel, cardDetails } = req.body;
 
     try {
